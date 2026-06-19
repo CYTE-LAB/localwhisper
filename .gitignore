@@ -1,0 +1,18 @@
+# Rust
+/src-tauri/target
+**/*.rs.bk
+
+# Node
+node_modules/
+dist/
+build/
+.env
+.env.local
+
+# Models
+/src-tauri/models/*.bin
+/src-tauri/models/*.gguf
+
+# OS
+.DS_Store
+Thumbs.db
