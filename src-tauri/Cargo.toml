@@ -15,26 +15,44 @@ tauri-build = { version = "2", features = [] }
 serde_json = "1"
 serde = { version = "1", features = ["derive"] }
 tauri = { version = "2", features = [] }
-tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 tauri-plugin-global-shortcut = "2"
+tokio = { version = "1", features = ["full"] }
+log = "0.4"
+env_logger = "0.11"
 
 # Audio capture
 cpal = "0.15"
 
+# Resampling (to 16kHz mono for Whisper)
+rubato = "0.16"
+
 # STT inference (whisper.cpp binding)
-whisper-rs = "0.12"
+whisper-rs = "0.16"
 
 # LLM inference (llama.cpp binding)
-llama-cpp-4 = "0.1"
+llama-cpp-4 = { version = "0.1", features = ["metal"] }
 
 # Keyboard simulation
-enigo = "0.2"
+enigo = { version = "0.2", features = ["simulate"] }
 
-# Device fingerprint for license verification
-machine-uid = "0.5"
+# Async channels for pipeline communication
+crossbeam-channel = "0.5"
 
-# Cryptographic signing for license
-ed25519-dalek = "2"
+# Parking lot for fast mutexes
+parking_lot = "0.12"
+
+# Error handling
+thiserror = "2"
+
+# Directory paths
+dirs = "5"
+
+# Tauri event emission
+tauri-plugin-shell = "2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+cocoa = "0.26"
+objc = "0.2"
 
 [features]
 default = ["custom-protocol"]

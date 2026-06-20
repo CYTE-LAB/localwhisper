@@ -13,11 +13,12 @@
     "windows": [
       {
         "title": "LocalWhisper",
-        "width": 420,
-        "height": 600,
+        "width": 400,
+        "height": 560,
         "resizable": true,
         "decorations": true,
-        "transparent": false
+        "transparent": false,
+        "center": true
       }
     ],
     "security": {
@@ -38,11 +39,6 @@
   "plugins": {
     "global-shortcut": {
       "all": true
-    },
-    "sql": {
-      "preload": {
-        "db": "sqlite:localwhisper.db"
-      }
     }
   }
 }
