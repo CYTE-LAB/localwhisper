@@ -1,15 +1,15 @@
 ---
-title: Vocalink Architecture Design
+title: LocalWhisper Architecture Design
 author: CYTE LAB
 date: 2026-06-15
 version: 1.0.0
 ---
 
-# Vocalink Architecture Design
+# LocalWhisper Architecture Design
 
 ## 1. Overview
 
-Vocalink is a desktop application designed to provide seamless, privacy-first AI voice dictation. The core value proposition is performing both Speech-to-Text (STT) and Large Language Model (LLM) text polishing entirely on the user's local machine, without relying on external APIs or background daemon processes like Ollama.
+LocalWhisper is a desktop application designed to provide seamless, privacy-first AI voice dictation. The core value proposition is performing both Speech-to-Text (STT) and Large Language Model (LLM) text polishing entirely on the user's local machine, without relying on external APIs or background daemon processes like Ollama.
 
 ## 2. Core Technologies
 
@@ -22,7 +22,7 @@ Vocalink is a desktop application designed to provide seamless, privacy-first AI
 
 ## 3. The "In-Process" Inference Model
 
-Unlike typical local AI wrappers that act as clients to an Ollama or LM Studio server, Vocalink embeds the inference engines directly into the Rust backend process.
+Unlike typical local AI wrappers that act as clients to an Ollama or LM Studio server, LocalWhisper embeds the inference engines directly into the Rust backend process.
 
 ### Benefits:
 1. **Zero Cold Start**: Models are loaded into memory when the app launches.
@@ -56,7 +56,7 @@ The dictation process is managed by a strict State Machine in Rust (`pipeline.rs
 
 ## 5. Security & Licensing
 
-Vocalink will be distributed as a commercial product with a one-time purchase model. 
+LocalWhisper will be distributed as a commercial product with a one-time purchase model. 
 
 - **Payment Gateway**: Lemon Squeezy.
 - **Verification**: The Rust backend handles license key validation.
