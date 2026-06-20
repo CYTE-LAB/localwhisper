@@ -1,6 +1,6 @@
-# Contributing to Vocalink
+# Contributing to LocalWhisper
 
-First off, thank you for considering contributing to Vocalink! It's people like you that make open-source tools great.
+First off, thank you for considering contributing to LocalWhisper! It's people like you that make open-source tools great.
 
 ## Development Setup
 
@@ -12,8 +12,8 @@ First off, thank you for considering contributing to Vocalink! It's people like 
 
 To run the application locally, you must download the necessary model weights and place them in the `src-tauri/models/` directory.
 
-- Download `ggml-large-v3-turbo.bin` from Hugging Face.
-- Download `gemma-3-1b-it-Q4_K_M.gguf` from Hugging Face.
+- Download `ggml-large-v3-turbo.bin` from [Hugging Face](https://huggingface.co/ggerganov/whisper.cpp).
+- Download `gemma-3-1b-it-Q4_K_M.gguf` from [Hugging Face](https://huggingface.co/bartowski/gemma-3-1b-it-GGUF).
 
 ## Pull Request Process
 
@@ -31,7 +31,8 @@ To run the application locally, you must download the necessary model weights an
 ## Reporting Bugs
 
 Please use the GitHub Issue Tracker to report bugs. Include:
+
 - Your OS and version
-- Vocalink version
+- LocalWhisper version
 - Steps to reproduce the bug
 - Expected vs actual behavior

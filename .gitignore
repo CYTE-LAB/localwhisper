@@ -1,5 +1,5 @@
 # Rust
-/src-tauri/target
+/src-tauri/target/
 **/*.rs.bk
 
 # Node
@@ -7,12 +7,23 @@ node_modules/
 dist/
 build/
 .env
-.env.local
+.env.*
 
-# Models
+# Models (too large for git)
 /src-tauri/models/*.bin
 /src-tauri/models/*.gguf
+*.ggml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 
 # OS
 .DS_Store
 Thumbs.db
+
+# Logs
+*.log
