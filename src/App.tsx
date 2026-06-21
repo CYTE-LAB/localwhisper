@@ -8,10 +8,26 @@ import Settings from "./components/Settings";
 export type View = "onboarding" | "main" | "settings";
 export type PipelineStatus = "idle" | "recording" | "transcribing" | "polishing" | "outputting" | { error: string };
 
+interface ModelStatusResponse {
+  whisper_loaded: boolean;
+  llm_loaded: boolean;
+  whisper_model_path: string | null;
+  llm_model_path: string | null;
+}
+
 function App() {
   const [view, setView] = useState<View>("main");
   const [status, setStatus] = useState<PipelineStatus>("idle");
   const [modelsReady, setModelsReady] = useState(false);
+
+  const checkModelStatus = async () => {
+    try {
+      const result = await invoke<ModelStatusResponse>("get_model_status");
+      setModelsReady(result.whisper_loaded);
+    } catch {
+      setModelsReady(false);
+    }
+  };
 
   useEffect(() => {
     // Check if onboarding is needed
@@ -24,9 +40,7 @@ function App() {
     });
 
     // Check model status
-    invoke("get_model_status").then((status: any) => {
-      setModelsReady(status.whisper_loaded && status.llm_loaded);
-    }).catch(() => {});
+    checkModelStatus();
 
     // Listen for pipeline status events
     const unlisten = listen<PipelineStatus>("pipeline-status", (event) => {
@@ -40,12 +54,10 @@ function App() {
 
   const handleOnboardingComplete = () => {
     setView("main");
-    // Try to load models
-    invoke("init_models").then(() => {
-      setModelsReady(true);
-    }).catch((e) => {
-      console.error("Failed to load models:", e);
-    });
+  };
+
+  const handleModelsLoaded = () => {
+    checkModelStatus();
   };
 
   return (
@@ -58,6 +70,7 @@ function App() {
           status={status}
           modelsReady={modelsReady}
           onOpenSettings={() => setView("settings")}
+          onModelsLoaded={handleModelsLoaded}
         />
       )}
       {view === "settings" && (

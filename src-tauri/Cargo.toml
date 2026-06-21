@@ -23,9 +23,6 @@ env_logger = "0.11"
 # Audio capture
 cpal = "0.15"
 
-# Resampling (to 16kHz mono for Whisper)
-rubato = "0.16"
-
 # STT inference (whisper.cpp binding)
 whisper-rs = "0.16"
 
@@ -46,9 +43,6 @@ thiserror = "2"
 
 # Directory paths
 dirs = "5"
-
-# Tauri event emission
-tauri-plugin-shell = "2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.26"

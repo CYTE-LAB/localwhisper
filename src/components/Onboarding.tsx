@@ -5,13 +5,16 @@ interface OnboardingProps {
   onComplete: () => void;
 }
 
-type Step = "welcome" | "permissions" | "shortcut" | "test" | "done";
+type Step = "welcome" | "permissions" | "shortcut" | "models" | "test" | "done";
 
 export default function Onboarding({ onComplete }: OnboardingProps) {
   const [step, setStep] = useState<Step>("welcome");
-  const [shortcut, setShortcut] = useState("CmdOrCtrl+Shift+Space");
+  const [shortcut] = useState("CmdOrCtrl+Shift+Space");
   const [testResult, setTestResult] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelsError, setModelsError] = useState<string | null>(null);
+  const [modelsLoaded, setModelsLoaded] = useState(false);
 
   const handleTestRecord = async () => {
     if (isRecording) {
@@ -31,6 +34,19 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
         setTestResult(`Error: ${e}`);
         setIsRecording(false);
       }
+    }
+  };
+
+  const handleLoadModels = async () => {
+    setModelsLoading(true);
+    setModelsError(null);
+    try {
+      await invoke("init_models");
+      setModelsLoaded(true);
+    } catch (e: any) {
+      setModelsError(typeof e === "string" ? e : e.message || "Failed to load models");
+    } finally {
+      setModelsLoading(false);
     }
   };
 
@@ -141,11 +157,84 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
             <p className="text-xs text-gray-500 mt-3">You can change this later in Settings</p>
           </div>
           <button
-            onClick={() => setStep("test")}
+            onClick={() => setStep("models")}
             className="px-8 py-3 bg-white text-black font-medium rounded-lg hover:bg-gray-200 transition-colors"
           >
             Continue
           </button>
+        </div>
+      )}
+
+      {/* Model Loading */}
+      {step === "models" && (
+        <div className="text-center max-w-md animate-fade-in">
+          <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
+            <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
+            </svg>
+          </div>
+          <h2 className="text-2xl font-bold mb-3">Load AI Models</h2>
+          <p className="text-gray-400 mb-4 leading-relaxed">
+            LocalWhisper uses two AI models that run entirely on your device.
+          </p>
+          <div className="space-y-2 mb-6 text-left">
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10">
+              <div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center flex-shrink-0">
+                <span className="text-xs font-bold text-purple-400">W</span>
+              </div>
+              <div>
+                <p className="text-sm font-medium">Whisper Large V3 Turbo</p>
+                <p className="text-xs text-gray-500">Speech recognition (~1.5 GB)</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10">
+              <div className="w-8 h-8 rounded-full bg-cyan-500/20 flex items-center justify-center flex-shrink-0">
+                <span className="text-xs font-bold text-cyan-400">G</span>
+              </div>
+              <div>
+                <p className="text-sm font-medium">Gemma 3 1B IT</p>
+                <p className="text-xs text-gray-500">Text polishing (~650 MB, optional)</p>
+              </div>
+            </div>
+          </div>
+
+          {modelsError && (
+            <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 mb-4 text-left">
+              <p className="text-xs text-red-400">{modelsError}</p>
+              <p className="text-xs text-gray-500 mt-1">
+                Run <code className="bg-white/5 px-1 rounded">./scripts/download-models.sh</code> to download models first.
+              </p>
+            </div>
+          )}
+
+          {modelsLoaded ? (
+            <>
+              <div className="flex items-center justify-center gap-2 text-green-400 mb-6">
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clipRule="evenodd" />
+                </svg>
+                <span className="text-sm font-medium">Models loaded successfully</span>
+              </div>
+              <button
+                onClick={() => setStep("test")}
+                className="px-8 py-3 bg-white text-black font-medium rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                Continue
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={handleLoadModels}
+              disabled={modelsLoading}
+              className={`px-8 py-3 font-medium rounded-lg transition-colors ${
+                modelsLoading
+                  ? "bg-white/10 text-gray-500 cursor-wait"
+                  : "bg-white text-black hover:bg-gray-200"
+              }`}
+            >
+              {modelsLoading ? "Loading models..." : "Load Models"}
+            </button>
+          )}
         </div>
       )}
 

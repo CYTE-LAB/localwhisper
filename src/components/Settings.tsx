@@ -114,7 +114,7 @@ export default function Settings({ onBack }: SettingsProps) {
                   <p className="text-xs font-medium">Whisper Large V3 Turbo</p>
                   <p className="text-[10px] text-gray-500">Speech-to-Text engine</p>
                 </div>
-                <span className="text-[10px] text-gray-500">~1.0 GB</span>
+                <span className="text-[10px] text-gray-500">~1.5 GB</span>
               </div>
             </div>
             <div className="p-3 rounded-lg bg-white/5 border border-white/10">

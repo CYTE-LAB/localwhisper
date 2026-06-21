@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { PipelineStatus } from "../App";
 
@@ -5,9 +6,13 @@ interface MainViewProps {
   status: PipelineStatus;
   modelsReady: boolean;
   onOpenSettings: () => void;
+  onModelsLoaded: () => void;
 }
 
-export default function MainView({ status, modelsReady, onOpenSettings }: MainViewProps) {
+export default function MainView({ status, modelsReady, onOpenSettings, onModelsLoaded }: MainViewProps) {
+  const [loadingModels, setLoadingModels] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const statusText = () => {
     if (typeof status === "object" && "error" in status) return status.error;
     switch (status) {
@@ -35,10 +40,15 @@ export default function MainView({ status, modelsReady, onOpenSettings }: MainVi
   const isActive = status === "recording" || status === "transcribing" || status === "polishing" || status === "outputting";
 
   const handleLoadModels = async () => {
+    setLoadingModels(true);
+    setLoadError(null);
     try {
       await invoke("init_models");
-    } catch (e) {
-      console.error("Failed to load models:", e);
+      onModelsLoaded();
+    } catch (e: any) {
+      setLoadError(typeof e === "string" ? e : e.message || "Failed to load models");
+    } finally {
+      setLoadingModels(false);
     }
   };
 
@@ -47,7 +57,11 @@ export default function MainView({ status, modelsReady, onOpenSettings }: MainVi
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-white/5">
         <div className="flex items-center gap-2">
-          <img src="/assets/logo.png" alt="LocalWhisper" className="w-6 h-6" />
+          <div className="w-6 h-6 rounded bg-white/10 flex items-center justify-center">
+            <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+            </svg>
+          </div>
           <span className="text-sm font-medium">LocalWhisper</span>
         </div>
         <button
@@ -89,7 +103,7 @@ export default function MainView({ status, modelsReady, onOpenSettings }: MainVi
         </p>
 
         {/* Shortcut Hint */}
-        {status === "idle" && (
+        {status === "idle" && modelsReady && (
           <p className="text-xs text-gray-500">
             Press <kbd className="px-1.5 py-0.5 bg-white/5 border border-white/10 rounded text-[10px] font-mono">⌘+⇧+Space</kbd> to dictate
           </p>
@@ -102,11 +116,19 @@ export default function MainView({ status, modelsReady, onOpenSettings }: MainVi
             <p className="text-xs text-gray-500 mb-3">
               Download the required model files and place them in the models directory, then click below to load.
             </p>
+            {loadError && (
+              <p className="text-xs text-red-400 mb-3 p-2 bg-red-500/5 rounded">{loadError}</p>
+            )}
             <button
               onClick={handleLoadModels}
-              className="text-xs px-3 py-1.5 bg-yellow-500/10 border border-yellow-500/30 rounded-md text-yellow-400 hover:bg-yellow-500/20 transition-colors"
+              disabled={loadingModels}
+              className={`text-xs px-3 py-1.5 border rounded-md transition-colors ${
+                loadingModels
+                  ? "bg-white/5 border-white/10 text-gray-500 cursor-wait"
+                  : "bg-yellow-500/10 border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/20"
+              }`}
             >
-              Load Models
+              {loadingModels ? "Loading..." : "Load Models"}
             </button>
           </div>
         )}
