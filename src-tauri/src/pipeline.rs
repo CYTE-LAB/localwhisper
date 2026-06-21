@@ -1,8 +1,8 @@
 use crate::audio::AudioRecorder;
-use crate::commands::ModelStatus;
 use crate::inference::whisper::WhisperEngine;
 use crate::inference::llm::LlmEngine;
 use crate::inference::models_dir;
+use crate::ModelStatus;
 use enigo::{Enigo, Keyboard, Settings};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
@@ -19,7 +19,7 @@ pub enum PipelineStatus {
     Error(String),
 }
 
-/// Manages the full dictation pipeline
+/// Manages the full dictation pipeline (synchronous — runs in Mutex)
 pub struct PipelineManager {
     app_handle: AppHandle,
     recorder: Option<AudioRecorder>,
@@ -50,6 +50,10 @@ impl PipelineManager {
             log::info!("Whisper model loaded");
         } else {
             log::warn!("Whisper model not found at {:?}", whisper_path);
+            return Err(format!(
+                "Whisper model not found. Please download it to: {:?}",
+                whisper_path
+            ).into());
         }
 
         // Load LLM model
@@ -58,7 +62,8 @@ impl PipelineManager {
             self.llm = Some(LlmEngine::new(&llm_path)?);
             log::info!("LLM model loaded");
         } else {
-            log::warn!("LLM model not found at {:?}", llm_path);
+            log::warn!("LLM model not found at {:?}. Text polishing will be disabled.", llm_path);
+            // LLM is optional — don't fail if missing
         }
 
         Ok(())
@@ -83,8 +88,9 @@ impl PipelineManager {
         Ok(())
     }
 
-    /// Stop recording and run the full pipeline (transcribe → polish → output)
-    pub async fn stop_recording(&mut self) -> Result<String, Box<dyn std::error::Error>> {
+    /// Stop recording and run the full pipeline synchronously
+    /// (transcribe → polish → keyboard output)
+    pub fn stop_and_process(&mut self) -> Result<String, Box<dyn std::error::Error>> {
         if self.status != PipelineStatus::Recording {
             return Err("Not currently recording".into());
         }
@@ -96,12 +102,13 @@ impl PipelineManager {
             return Err("No recorder available".into());
         };
 
-        // 2. Transcribe
+        // 2. Transcribe with Whisper
         self.set_status(PipelineStatus::Transcribing);
         let raw_text = if let Some(ref whisper) = self.whisper {
             whisper.transcribe(&audio)?
         } else {
-            return Err("Whisper model not loaded".into());
+            self.set_status(PipelineStatus::Error("Whisper model not loaded".into()));
+            return Err("Whisper model not loaded. Call init_models first.".into());
         };
 
         if raw_text.is_empty() {
@@ -109,28 +116,35 @@ impl PipelineManager {
             return Ok(String::new());
         }
 
-        // 3. Polish with LLM
+        // 3. Polish with LLM (optional)
         self.set_status(PipelineStatus::Polishing);
         let polished_text = if let Some(ref llm) = self.llm {
             match llm.polish(&raw_text) {
-                Ok(text) => text,
+                Ok(text) if !text.is_empty() => text,
+                Ok(_) => raw_text.clone(),
                 Err(e) => {
                     log::warn!("LLM polishing failed, using raw text: {}", e);
                     raw_text.clone()
                 }
             }
         } else {
-            // If no LLM loaded, use raw transcription
             log::info!("No LLM model loaded, using raw transcription");
             raw_text.clone()
         };
 
         // 4. Type the text into the active window
         self.set_status(PipelineStatus::Outputting);
-        self.type_text(&polished_text)?;
+        if let Err(e) = self.type_text(&polished_text) {
+            log::error!("Failed to type text: {}", e);
+            self.set_status(PipelineStatus::Error(format!("Typing failed: {}", e)));
+            return Err(e);
+        }
 
         // 5. Done
         self.set_status(PipelineStatus::Idle);
+
+        // Emit the result to the frontend for display
+        let _ = self.app_handle.emit("dictation-result", &polished_text);
 
         Ok(polished_text)
     }
@@ -143,7 +157,7 @@ impl PipelineManager {
             .map_err(|e| format!("Failed to create Enigo: {:?}", e))?;
 
         // Small delay to ensure the target window is focused
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        std::thread::sleep(std::time::Duration::from_millis(50));
 
         enigo.text(text)
             .map_err(|e| format!("Failed to type text: {:?}", e))?;
@@ -162,8 +176,12 @@ impl PipelineManager {
         ModelStatus {
             whisper_loaded: self.whisper.is_some(),
             llm_loaded: self.llm.is_some(),
-            whisper_model_path: Some(models_path.join("ggml-large-v3-turbo.bin").to_string_lossy().to_string()),
-            llm_model_path: Some(models_path.join("gemma-3-1b-it-Q4_K_M.gguf").to_string_lossy().to_string()),
+            whisper_model_path: Some(
+                models_path.join("ggml-large-v3-turbo.bin").to_string_lossy().to_string(),
+            ),
+            llm_model_path: Some(
+                models_path.join("gemma-3-1b-it-Q4_K_M.gguf").to_string_lossy().to_string(),
+            ),
         }
     }
 

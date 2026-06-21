@@ -1,6 +1,5 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{Device, SampleFormat, Stream, StreamConfig};
-use crossbeam_channel::{bounded, Receiver, Sender};
+use cpal::{Stream, StreamConfig};
 use std::sync::Arc;
 use parking_lot::Mutex;
 
@@ -9,7 +8,7 @@ const TARGET_SAMPLE_RATE: u32 = 16000;
 
 /// Audio recorder that captures microphone input
 pub struct AudioRecorder {
-    device: Device,
+    device: cpal::Device,
     config: StreamConfig,
     stream: Option<Stream>,
     buffer: Arc<Mutex<Vec<f32>>>,
