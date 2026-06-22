@@ -8,6 +8,12 @@ import Settings from "./components/Settings";
 export type View = "onboarding" | "main" | "settings";
 export type PipelineStatus = "idle" | "recording" | "transcribing" | "polishing" | "outputting" | { error: string };
 
+export interface DictationEntry {
+  id: number;
+  text: string;
+  timestamp: number;
+}
+
 interface ModelStatusResponse {
   whisper_loaded: boolean;
   llm_loaded: boolean;
@@ -19,6 +25,7 @@ function App() {
   const [view, setView] = useState<View>("main");
   const [status, setStatus] = useState<PipelineStatus>("idle");
   const [modelsReady, setModelsReady] = useState(false);
+  const [history, setHistory] = useState<DictationEntry[]>([]);
 
   const checkModelStatus = async () => {
     try {
@@ -43,17 +50,34 @@ function App() {
     checkModelStatus();
 
     // Listen for pipeline status events
-    const unlisten = listen<PipelineStatus>("pipeline-status", (event) => {
+    const unlistenStatus = listen<PipelineStatus>("pipeline-status", (event) => {
       setStatus(event.payload);
     });
 
+    // Listen for dictation results
+    const unlistenResult = listen<string>("dictation-result", (event) => {
+      if (event.payload && event.payload.trim()) {
+        setHistory((prev) => [
+          {
+            id: Date.now(),
+            text: event.payload,
+            timestamp: Date.now(),
+          },
+          ...prev,
+        ].slice(0, 50)); // Keep last 50 entries
+      }
+    });
+
     return () => {
-      unlisten.then((fn) => fn());
+      unlistenStatus.then((fn) => fn());
+      unlistenResult.then((fn) => fn());
     };
   }, []);
 
   const handleOnboardingComplete = () => {
     setView("main");
+    // Refresh model status after onboarding (user loaded models during onboarding)
+    checkModelStatus();
   };
 
   const handleModelsLoaded = () => {
@@ -69,6 +93,7 @@ function App() {
         <MainView
           status={status}
           modelsReady={modelsReady}
+          history={history}
           onOpenSettings={() => setView("settings")}
           onModelsLoaded={handleModelsLoaded}
         />

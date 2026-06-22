@@ -9,7 +9,12 @@ mod settings;
 use parking_lot::Mutex;
 use pipeline::PipelineManager;
 use std::sync::Arc;
-use tauri::Manager;
+use tauri::{
+    image::Image,
+    menu::{Menu, MenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    Manager, WindowEvent,
+};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 /// Shared application state accessible from Tauri commands
@@ -32,7 +37,7 @@ fn main() {
     tauri::Builder::default()
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, shortcut, event| {
+                .with_handler(|app, _shortcut, event| {
                     let state = app.state::<AppState>();
                     match event.state() {
                         ShortcutState::Pressed => {
@@ -68,7 +73,60 @@ fn main() {
                 log::error!("Failed to register global shortcut: {}", e);
             });
 
-            log::info!("LocalWhisper initialized successfully");
+            // --- System Tray ---
+            let quit = MenuItem::with_id(app, "quit", "Quit LocalWhisper", true, None::<&str>)?;
+            let show = MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show, &quit])?;
+
+            let tray_icon = Image::from_path("icons/icon.png")
+                .unwrap_or_else(|_| Image::from_bytes(include_bytes!("../icons/32x32.png")).unwrap());
+
+            let _tray = TrayIconBuilder::new()
+                .icon(tray_icon)
+                .menu(&menu)
+                .tooltip("LocalWhisper — Ready")
+                .on_menu_event(move |app, event| match event.id.as_ref() {
+                    "quit" => {
+                        app.exit(0);
+                    }
+                    "show" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                })
+                .build(app)?;
+
+            // --- Window close behavior: hide instead of quit ---
+            let main_window = app.get_webview_window("main").unwrap();
+            main_window.on_window_event(move |event| {
+                if let WindowEvent::CloseRequested { api, .. } = event {
+                    // Prevent the window from actually closing
+                    api.prevent_close();
+                    // Hide it instead (minimize to tray)
+                    if let Some(window) = app_handle.get_webview_window("main") {
+                        let _ = window.hide();
+                    }
+                }
+            });
+
+            log::info!("LocalWhisper initialized successfully with system tray");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

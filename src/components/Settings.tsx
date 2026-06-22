@@ -12,6 +12,13 @@ interface AppSettings {
   onboarding_complete: boolean;
 }
 
+interface ModelStatusResponse {
+  whisper_loaded: boolean;
+  llm_loaded: boolean;
+  whisper_model_path: string | null;
+  llm_model_path: string | null;
+}
+
 export default function Settings({ onBack }: SettingsProps) {
   const [settings, setSettings] = useState<AppSettings>({
     shortcut: "CmdOrCtrl+Shift+Space",
@@ -19,10 +26,12 @@ export default function Settings({ onBack }: SettingsProps) {
     language: "auto",
     onboarding_complete: true,
   });
+  const [modelStatus, setModelStatus] = useState<ModelStatusResponse | null>(null);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     invoke<AppSettings>("get_settings").then(setSettings).catch(console.error);
+    invoke<ModelStatusResponse>("get_model_status").then(setModelStatus).catch(console.error);
   }, []);
 
   const handleSave = async () => {
@@ -51,7 +60,7 @@ export default function Settings({ onBack }: SettingsProps) {
       </div>
 
       {/* Settings Content */}
-      <div className="flex-1 p-4 space-y-6">
+      <div className="flex-1 p-4 space-y-6 overflow-y-auto">
         {/* Shortcut */}
         <div>
           <label className="text-xs text-gray-400 font-medium mb-2 block">Global Shortcut</label>
@@ -114,7 +123,10 @@ export default function Settings({ onBack }: SettingsProps) {
                   <p className="text-xs font-medium">Whisper Large V3 Turbo</p>
                   <p className="text-[10px] text-gray-500">Speech-to-Text engine</p>
                 </div>
-                <span className="text-[10px] text-gray-500">~1.5 GB</span>
+                <div className="flex items-center gap-2">
+                  <div className={`w-1.5 h-1.5 rounded-full ${modelStatus?.whisper_loaded ? "bg-green-500" : "bg-yellow-500"}`} />
+                  <span className="text-[10px] text-gray-500">~1.5 GB</span>
+                </div>
               </div>
             </div>
             <div className="p-3 rounded-lg bg-white/5 border border-white/10">
@@ -123,8 +135,35 @@ export default function Settings({ onBack }: SettingsProps) {
                   <p className="text-xs font-medium">Gemma 3 1B (Q4_K_M)</p>
                   <p className="text-[10px] text-gray-500">Text polishing engine</p>
                 </div>
-                <span className="text-[10px] text-gray-500">~650 MB</span>
+                <div className="flex items-center gap-2">
+                  <div className={`w-1.5 h-1.5 rounded-full ${modelStatus?.llm_loaded ? "bg-green-500" : "bg-yellow-500"}`} />
+                  <span className="text-[10px] text-gray-500">~650 MB</span>
+                </div>
               </div>
+            </div>
+          </div>
+          {modelStatus?.whisper_model_path && (
+            <p className="text-[10px] text-gray-600 mt-2 break-all">
+              Path: {modelStatus.whisper_model_path.replace(/\/[^/]+$/, "/")}
+            </p>
+          )}
+        </div>
+
+        {/* About */}
+        <div>
+          <label className="text-xs text-gray-400 font-medium mb-2 block">About</label>
+          <div className="p-3 rounded-lg bg-white/5 border border-white/10 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-gray-400">Version</span>
+              <span className="text-xs text-gray-300">0.1.0</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-gray-400">License</span>
+              <span className="text-xs text-gray-300">MIT</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-gray-400">GitHub</span>
+              <span className="text-xs text-blue-400">CYTE-LAB/localwhisper</span>
             </div>
           </div>
         </div>
