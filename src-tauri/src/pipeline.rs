@@ -1,7 +1,8 @@
 use crate::audio::AudioRecorder;
-use crate::inference::whisper::WhisperEngine;
 use crate::inference::llm::LlmEngine;
 use crate::inference::models_dir;
+use crate::inference::whisper::WhisperEngine;
+use crate::settings::AppSettings;
 use crate::ModelStatus;
 use enigo::{Enigo, Keyboard, Settings};
 use serde::{Deserialize, Serialize};
@@ -53,7 +54,8 @@ impl PipelineManager {
             return Err(format!(
                 "Whisper model not found. Please download it to: {:?}",
                 whisper_path
-            ).into());
+            )
+            .into());
         }
 
         // Load LLM model
@@ -62,7 +64,10 @@ impl PipelineManager {
             self.llm = Some(LlmEngine::new(&llm_path)?);
             log::info!("LLM model loaded");
         } else {
-            log::warn!("LLM model not found at {:?}. Text polishing will be disabled.", llm_path);
+            log::warn!(
+                "LLM model not found at {:?}. Text polishing will be disabled.",
+                llm_path
+            );
             // LLM is optional — don't fail if missing
         }
 
@@ -116,19 +121,25 @@ impl PipelineManager {
             return Ok(String::new());
         }
 
-        // 3. Polish with LLM (optional)
-        self.set_status(PipelineStatus::Polishing);
-        let polished_text = if let Some(ref llm) = self.llm {
-            match llm.polish(&raw_text) {
-                Ok(text) if !text.is_empty() => text,
-                Ok(_) => raw_text.clone(),
-                Err(e) => {
-                    log::warn!("LLM polishing failed, using raw text: {}", e);
-                    raw_text.clone()
+        // 3. Polish with LLM (respects user settings)
+        let settings = AppSettings::load().unwrap_or_default();
+        let polished_text = if settings.enable_polish {
+            self.set_status(PipelineStatus::Polishing);
+            if let Some(ref llm) = self.llm {
+                match llm.polish(&raw_text) {
+                    Ok(text) if !text.is_empty() => text,
+                    Ok(_) => raw_text.clone(),
+                    Err(e) => {
+                        log::warn!("LLM polishing failed, using raw text: {}", e);
+                        raw_text.clone()
+                    }
                 }
+            } else {
+                log::info!("No LLM model loaded, using raw transcription");
+                raw_text.clone()
             }
         } else {
-            log::info!("No LLM model loaded, using raw transcription");
+            log::info!("Text polishing disabled by user settings");
             raw_text.clone()
         };
 
@@ -159,7 +170,8 @@ impl PipelineManager {
         // Small delay to ensure the target window is focused
         std::thread::sleep(std::time::Duration::from_millis(50));
 
-        enigo.text(text)
+        enigo
+            .text(text)
             .map_err(|e| format!("Failed to type text: {:?}", e))?;
 
         Ok(())
@@ -177,10 +189,16 @@ impl PipelineManager {
             whisper_loaded: self.whisper.is_some(),
             llm_loaded: self.llm.is_some(),
             whisper_model_path: Some(
-                models_path.join("ggml-large-v3-turbo.bin").to_string_lossy().to_string(),
+                models_path
+                    .join("ggml-large-v3-turbo.bin")
+                    .to_string_lossy()
+                    .to_string(),
             ),
             llm_model_path: Some(
-                models_path.join("gemma-3-1b-it-Q4_K_M.gguf").to_string_lossy().to_string(),
+                models_path
+                    .join("gemma-3-1b-it-Q4_K_M.gguf")
+                    .to_string_lossy()
+                    .to_string(),
             ),
         }
     }
