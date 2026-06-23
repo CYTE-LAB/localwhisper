@@ -47,6 +47,18 @@
   "plugins": {
     "global-shortcut": {
       "all": true
+    },
+    "shell": {
+      "all": true
+    },
+    "fs": {
+      "all": true
+    },
+    "dialog": {
+      "all": true
+    },
+    "notification": {
+      "all": true
     }
   }
 }
