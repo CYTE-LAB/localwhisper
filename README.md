@@ -69,6 +69,22 @@ curl -L -o src-tauri/models/gemma-3-1b-it-Q4_K_M.gguf \
   https://huggingface.co/bartowski/gemma-3-1b-it-GGUF/resolve/main/gemma-3-1b-it-Q4_K_M.gguf
 ```
 
+## Features
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| Voice Dictation | ✅ | Press-and-hold shortcut to record, release to transcribe |
+| AI Text Polishing | ✅ | Gemma 3 removes filler words, fixes grammar |
+| System Tray | ✅ | Runs in background, always ready |
+| Dictation History | ✅ | View recent transcriptions with timestamps |
+| Onboarding Wizard | ✅ | 6-step guided setup (permissions, shortcut, models, test) |
+| Custom Shortcut | 🔜 | UI-based shortcut capture |
+| In-App Model Download | 🔜 | Download models with progress bar inside the app |
+| Context-Aware Formatting | 🔜 | Detect active app and adjust output format |
+| License Verification | 🔜 | Lemon Squeezy integration for commercial distribution |
+| Installers | 🔜 | macOS `.dmg` and Windows `.msi` |
+| Auto-Update | 🔜 | Built-in update mechanism |
+
 ## Architecture
 
 LocalWhisper is built with a **Tauri + React** stack, optimized for maximum performance and minimal memory footprint.
@@ -76,7 +92,7 @@ LocalWhisper is built with a **Tauri + React** stack, optimized for maximum perf
 | Layer | Technology | Purpose |
 |-------|-----------|---------|
 | Frontend UI | React + TypeScript + TailwindCSS | Settings, onboarding, status display |
-| Desktop Framework | Tauri v2 (Rust) | App shell, IPC, global shortcut |
+| Desktop Framework | Tauri v2 (Rust) | App shell, IPC, global shortcut, system tray |
 | Audio Capture | `cpal` | Microphone recording + mono resampling |
 | STT Engine | `whisper-rs` (embedded `whisper.cpp`) | Speech-to-text |
 | LLM Engine | `llama-cpp-4` (embedded `llama.cpp`) | Text polishing |
@@ -109,7 +125,7 @@ For a deep dive into the technical design, please read [docs/DESIGN.md](docs/DES
 localwhisper/
 ├── src-tauri/
 │   ├── src/
-│   │   ├── main.rs          # Entry, state, commands, shortcut registration
+│   │   ├── main.rs          # Entry, state, commands, shortcut, system tray
 │   │   ├── audio.rs         # Microphone capture + resampling to 16kHz
 │   │   ├── pipeline.rs      # State machine (Record → Transcribe → Polish → Type)
 │   │   ├── settings.rs      # Persistent settings (JSON)
@@ -126,37 +142,24 @@ localwhisper/
 │   ├── main.tsx             # React entry
 │   ├── styles.css           # Tailwind + animations
 │   └── components/
-│       ├── Onboarding.tsx   # 5-step setup wizard
-│       ├── MainView.tsx     # Status indicator + controls
+│       ├── Onboarding.tsx   # 6-step setup wizard
+│       ├── MainView.tsx     # Status indicator + dictation history
 │       └── Settings.tsx     # Configuration panel
 ├── scripts/
 │   └── download-models.sh   # Model download helper
 ├── docs/
 │   └── DESIGN.md            # Architecture design document
+├── .github/
+│   ├── workflows/           # CI/CD pipelines
+│   └── ISSUE_TEMPLATE/      # Bug report & feature request templates
 ├── assets/
 │   └── logo.png             # Brand logo
 ├── package.json
+├── CHANGELOG.md
 ├── CONTRIBUTING.md
 ├── LICENSE
 └── README.md
 ```
-
-## Roadmap
-
-- [x] Initial project scaffold and architecture docs
-- [x] Core audio capture pipeline (`cpal`)
-- [x] In-process STT inference (`whisper-rs`)
-- [x] In-process LLM text polishing (`llama-cpp-4`)
-- [x] Global shortcut listener (`Cmd+Shift+Space`)
-- [x] Onboarding flow (permissions, microphone test, hotkey binding)
-- [x] Model download helper script
-- [ ] Custom shortcut binding (UI capture)
-- [ ] In-app model download with progress bar
-- [ ] History panel (recent dictations)
-- [ ] Context-aware formatting (detecting active application)
-- [ ] License verification module (Lemon Squeezy integration)
-- [ ] macOS `.dmg` and Windows `.msi` installers
-- [ ] Auto-update mechanism
 
 ## Contributing
 

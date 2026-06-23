@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- GitHub Actions CI workflow (Rust check + frontend build)
+- `.editorconfig` for consistent code style across editors
+- Pull Request template with checklist
 - System tray support — app minimizes to tray on close, click tray icon to restore
 - Dictation history panel — view recent transcriptions from the main window
 - Live model status indicators in Settings (green = loaded, yellow = not loaded)
@@ -23,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Window close button now hides to tray instead of quitting the app
 - MainView accepts and displays dictation history entries
+- DESIGN.md updated: removed unimplemented SQLite dependency, marked licensing as "Planned"
+- CONTRIBUTING.md rewritten: removed references to non-existent ESLint/Prettier, added proper setup instructions
+- README.md: updated Roadmap to reflect implemented features, added Features table
+- Replaced `pnpm lint` script with `pnpm typecheck` (TypeScript check only)
 
 ## [0.1.0] - 2026-06-22
 
