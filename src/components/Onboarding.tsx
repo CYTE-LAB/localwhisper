@@ -52,11 +52,13 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
 
   const handleComplete = async () => {
     try {
+      // Load existing settings first, then only mark onboarding as complete
+      const existing: any = await invoke("get_settings").catch(() => null);
       await invoke("update_settings", {
         settings: {
-          shortcut,
-          enable_polish: true,
-          language: "auto",
+          shortcut: existing?.shortcut || shortcut,
+          enable_polish: existing?.enable_polish ?? true,
+          language: existing?.language || "auto",
           onboarding_complete: true,
         },
       });

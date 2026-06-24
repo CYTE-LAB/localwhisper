@@ -100,6 +100,9 @@ impl PipelineManager {
             return Err("Not currently recording".into());
         }
 
+        // Load user settings
+        let settings = AppSettings::load().unwrap_or_default();
+
         // 1. Stop recording and get audio
         let audio = if let Some(ref mut recorder) = self.recorder {
             recorder.stop()?
@@ -107,10 +110,10 @@ impl PipelineManager {
             return Err("No recorder available".into());
         };
 
-        // 2. Transcribe with Whisper
+        // 2. Transcribe with Whisper (using language from settings)
         self.set_status(PipelineStatus::Transcribing);
         let raw_text = if let Some(ref whisper) = self.whisper {
-            whisper.transcribe(&audio)?
+            whisper.transcribe(&audio, &settings.language)?
         } else {
             self.set_status(PipelineStatus::Error("Whisper model not loaded".into()));
             return Err("Whisper model not loaded. Call init_models first.".into());
@@ -122,7 +125,6 @@ impl PipelineManager {
         }
 
         // 3. Polish with LLM (respects user settings)
-        let settings = AppSettings::load().unwrap_or_default();
         let polished_text = if settings.enable_polish {
             self.set_status(PipelineStatus::Polishing);
             if let Some(ref llm) = self.llm {
