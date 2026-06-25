@@ -1,7 +1,7 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{Stream, StreamConfig};
-use std::sync::Arc;
+use cpal::{SampleFormat, Stream, StreamConfig};
 use parking_lot::Mutex;
+use std::sync::Arc;
 
 /// Target sample rate for Whisper (16kHz mono f32)
 const TARGET_SAMPLE_RATE: u32 = 16000;
@@ -10,6 +10,7 @@ const TARGET_SAMPLE_RATE: u32 = 16000;
 pub struct AudioRecorder {
     device: cpal::Device,
     config: StreamConfig,
+    sample_format: SampleFormat,
     stream: Option<Stream>,
     buffer: Arc<Mutex<Vec<f32>>>,
     is_recording: bool,
@@ -27,11 +28,14 @@ impl AudioRecorder {
             .default_input_config()
             .map_err(|e| AudioError::ConfigError(e.to_string()))?;
 
+        let sample_format = supported_config.sample_format();
+
         log::info!(
-            "Audio device: {} ({}Hz, {} channels)",
+            "Audio device: {} ({}Hz, {} channels, format: {:?})",
             device.name().unwrap_or_default(),
             supported_config.sample_rate().0,
-            supported_config.channels()
+            supported_config.channels(),
+            sample_format
         );
 
         let config = StreamConfig {
@@ -43,6 +47,7 @@ impl AudioRecorder {
         Ok(Self {
             device,
             config,
+            sample_format,
             stream: None,
             buffer: Arc::new(Mutex::new(Vec::new())),
             is_recording: false,
@@ -61,23 +66,55 @@ impl AudioRecorder {
         let buffer_clone = self.buffer.clone();
         let channels = self.config.channels as usize;
 
-        let stream = self.device.build_input_stream(
-            &self.config,
-            move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                // Convert to mono by averaging channels
-                let mono: Vec<f32> = data
-                    .chunks(channels)
-                    .map(|frame| frame.iter().sum::<f32>() / channels as f32)
-                    .collect();
-                buffer_clone.lock().extend_from_slice(&mono);
-            },
-            move |err| {
-                log::error!("Audio stream error: {}", err);
-            },
-            None,
-        ).map_err(|e| AudioError::StreamError(e.to_string()))?;
+        let err_fn = move |err| {
+            log::error!("Audio stream error: {}", err);
+        };
 
-        stream.play().map_err(|e| AudioError::StreamError(e.to_string()))?;
+        let stream = match self.sample_format {
+            SampleFormat::F32 => self.device.build_input_stream(
+                &self.config,
+                move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                    write_to_buffer(data, channels, &buffer_clone);
+                },
+                err_fn,
+                None,
+            ),
+            SampleFormat::I16 => self.device.build_input_stream(
+                &self.config,
+                move |data: &[i16], _: &cpal::InputCallbackInfo| {
+                    let f32_data: Vec<f32> = data
+                        .iter()
+                        .map(|&s| s as f32 / i16::MAX as f32)
+                        .collect();
+                    write_to_buffer(&f32_data, channels, &buffer_clone);
+                },
+                err_fn,
+                None,
+            ),
+            SampleFormat::U16 => self.device.build_input_stream(
+                &self.config,
+                move |data: &[u16], _: &cpal::InputCallbackInfo| {
+                    let f32_data: Vec<f32> = data
+                        .iter()
+                        .map(|&s| (s as f32 - u16::MAX as f32 / 2.0) / (u16::MAX as f32 / 2.0))
+                        .collect();
+                    write_to_buffer(&f32_data, channels, &buffer_clone);
+                },
+                err_fn,
+                None,
+            ),
+            _ => {
+                return Err(AudioError::ConfigError(format!(
+                    "Unsupported sample format: {:?}",
+                    self.sample_format
+                )))
+            }
+        }
+        .map_err(|e| AudioError::StreamError(e.to_string()))?;
+
+        stream
+            .play()
+            .map_err(|e| AudioError::StreamError(e.to_string()))?;
         self.stream = Some(stream);
         self.is_recording = true;
 
@@ -96,7 +133,10 @@ impl AudioRecorder {
         self.is_recording = false;
 
         let raw_samples = self.buffer.lock().clone();
-        log::info!("Recording stopped: {} raw samples captured", raw_samples.len());
+        log::info!(
+            "Recording stopped: {} raw samples captured",
+            raw_samples.len()
+        );
 
         if raw_samples.is_empty() {
             return Err(AudioError::EmptyBuffer);
@@ -110,7 +150,8 @@ impl AudioRecorder {
             raw_samples
         };
 
-        log::info!("Resampled to {} samples at 16kHz ({:.1}s of audio)",
+        log::info!(
+            "Resampled to {} samples at 16kHz ({:.1}s of audio)",
             resampled.len(),
             resampled.len() as f32 / TARGET_SAMPLE_RATE as f32
         );
@@ -121,6 +162,15 @@ impl AudioRecorder {
     pub fn is_recording(&self) -> bool {
         self.is_recording
     }
+}
+
+/// Helper to convert interleaved multi-channel data to mono f32 and write to buffer
+fn write_to_buffer(data: &[f32], channels: usize, buffer: &Arc<Mutex<Vec<f32>>>) {
+    let mono: Vec<f32> = data
+        .chunks(channels)
+        .map(|frame| frame.iter().sum::<f32>() / channels as f32)
+        .collect();
+    buffer.lock().extend_from_slice(&mono);
 }
 
 /// Simple linear interpolation resampler

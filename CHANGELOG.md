@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Enhanced audio compatibility**: Support for multiple input sample formats (f32, i16, u16), improving reliability across different microphones
+- **Production-ready model paths**: Improved logic to find models in system-standard local data directories when packaged
 - GitHub Actions CI workflow (Rust check + frontend build)
 - `.editorconfig` for consistent code style across editors
 - Pull Request template with checklist
