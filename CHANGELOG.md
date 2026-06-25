@@ -19,13 +19,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `tray-icon` and `image-png` Tauri features for tray functionality
 
 ### Fixed
+- **Language setting now actually affects Whisper transcription** — previously hardcoded to "auto"
+- **Onboarding no longer overwrites user settings** — now merges with existing preferences
+- Whisper thread count now auto-detects available CPU cores (capped at 8)
 - App now refreshes model status after onboarding completes
 - Frontend now listens for `dictation-result` events from backend
 - Window label added to `tauri.conf.json` for proper tray-to-window communication
+- Settings page auto-saves when navigating back if changes were made
+- Save button disabled when no changes are pending
 
 ### Changed
 - Window close button now hides to tray instead of quitting the app
 - MainView accepts and displays dictation history entries
+- Settings: added Portuguese, Russian, Arabic language options
+- Settings: added "Unsaved changes" indicator and improved UX
+- Settings: shortcut section now indicates custom binding is planned
 - DESIGN.md updated: removed unimplemented SQLite dependency, marked licensing as "Planned"
 - CONTRIBUTING.md rewritten: removed references to non-existent ESLint/Prettier, added proper setup instructions
 - README.md: updated Roadmap to reflect implemented features, added Features table
