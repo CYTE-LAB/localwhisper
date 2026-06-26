@@ -74,19 +74,49 @@ impl PipelineManager {
         Ok(())
     }
 
+    /// Check if Whisper model is loaded and ready for dictation
+    pub fn is_ready(&self) -> bool {
+        self.whisper.is_some()
+    }
+
     /// Start recording audio
     pub fn start_recording(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         if self.status != PipelineStatus::Idle {
             return Err("Pipeline is not idle".into());
         }
 
+        // Pre-check: Whisper must be loaded before recording
+        if self.whisper.is_none() {
+            let err_msg = "Whisper model not loaded. Please load models first.".to_string();
+            self.set_status(PipelineStatus::Error(err_msg.clone()));
+            // Auto-recover to Idle after emitting error
+            self.set_status(PipelineStatus::Idle);
+            return Err(err_msg.into());
+        }
+
         // Initialize recorder if needed
         if self.recorder.is_none() {
-            self.recorder = Some(AudioRecorder::new()?);
+            match AudioRecorder::new() {
+                Ok(recorder) => self.recorder = Some(recorder),
+                Err(e) => {
+                    let err_msg = format!("Failed to initialize microphone: {}", e);
+                    self.set_status(PipelineStatus::Error(err_msg.clone()));
+                    self.set_status(PipelineStatus::Idle);
+                    return Err(err_msg.into());
+                }
+            }
         }
 
         if let Some(ref mut recorder) = self.recorder {
-            recorder.start()?;
+            match recorder.start() {
+                Ok(_) => {}
+                Err(e) => {
+                    let err_msg = format!("Failed to start recording: {}", e);
+                    self.set_status(PipelineStatus::Error(err_msg.clone()));
+                    self.set_status(PipelineStatus::Idle);
+                    return Err(err_msg.into());
+                }
+            }
         }
 
         self.set_status(PipelineStatus::Recording);
@@ -95,6 +125,9 @@ impl PipelineManager {
 
     /// Stop recording and run the full pipeline synchronously
     /// (transcribe → polish → keyboard output)
+    ///
+    /// IMPORTANT: All error paths MUST reset status to Idle to prevent the pipeline
+    /// from getting stuck in an intermediate state.
     pub fn stop_and_process(&mut self) -> Result<String, Box<dyn std::error::Error>> {
         if self.status != PipelineStatus::Recording {
             return Err("Not currently recording".into());
@@ -104,19 +137,28 @@ impl PipelineManager {
         let settings = AppSettings::load().unwrap_or_default();
 
         // 1. Stop recording and get audio
-        let audio = if let Some(ref mut recorder) = self.recorder {
-            recorder.stop()?
-        } else {
-            return Err("No recorder available".into());
+        let audio = match self.stop_recorder() {
+            Ok(audio) => audio,
+            Err(e) => {
+                let err_msg = format!("Failed to stop recording: {}", e);
+                log::error!("{}", err_msg);
+                self.set_status(PipelineStatus::Error(err_msg.clone()));
+                self.set_status(PipelineStatus::Idle);
+                return Err(err_msg.into());
+            }
         };
 
         // 2. Transcribe with Whisper (using language from settings)
         self.set_status(PipelineStatus::Transcribing);
-        let raw_text = if let Some(ref whisper) = self.whisper {
-            whisper.transcribe(&audio, &settings.language)?
-        } else {
-            self.set_status(PipelineStatus::Error("Whisper model not loaded".into()));
-            return Err("Whisper model not loaded. Call init_models first.".into());
+        let raw_text = match self.transcribe_audio(&audio, &settings.language) {
+            Ok(text) => text,
+            Err(e) => {
+                let err_msg = format!("Transcription failed: {}", e);
+                log::error!("{}", err_msg);
+                self.set_status(PipelineStatus::Error(err_msg.clone()));
+                self.set_status(PipelineStatus::Idle);
+                return Err(err_msg.into());
+            }
         };
 
         if raw_text.is_empty() {
@@ -125,41 +167,74 @@ impl PipelineManager {
         }
 
         // 3. Polish with LLM (respects user settings)
-        let polished_text = if settings.enable_polish {
-            self.set_status(PipelineStatus::Polishing);
-            if let Some(ref llm) = self.llm {
-                match llm.polish(&raw_text) {
-                    Ok(text) if !text.is_empty() => text,
-                    Ok(_) => raw_text.clone(),
-                    Err(e) => {
-                        log::warn!("LLM polishing failed, using raw text: {}", e);
-                        raw_text.clone()
-                    }
-                }
-            } else {
-                log::info!("No LLM model loaded, using raw transcription");
-                raw_text.clone()
-            }
-        } else {
-            log::info!("Text polishing disabled by user settings");
-            raw_text.clone()
-        };
+        let polished_text = self.polish_text(&raw_text, &settings);
 
         // 4. Type the text into the active window
         self.set_status(PipelineStatus::Outputting);
         if let Err(e) = self.type_text(&polished_text) {
-            log::error!("Failed to type text: {}", e);
-            self.set_status(PipelineStatus::Error(format!("Typing failed: {}", e)));
-            return Err(e);
+            let err_msg = format!("Typing failed: {}", e);
+            log::error!("{}", err_msg);
+            self.set_status(PipelineStatus::Error(err_msg.clone()));
+            self.set_status(PipelineStatus::Idle);
+            return Err(err_msg.into());
         }
 
-        // 5. Done
+        // 5. Done — always return to Idle
         self.set_status(PipelineStatus::Idle);
 
         // Emit the result to the frontend for display
         let _ = self.app_handle.emit("dictation-result", &polished_text);
 
         Ok(polished_text)
+    }
+
+    /// Stop the recorder and return audio samples
+    fn stop_recorder(&mut self) -> Result<Vec<f32>, Box<dyn std::error::Error>> {
+        if let Some(ref mut recorder) = self.recorder {
+            recorder.stop()
+        } else {
+            Err("No recorder available".into())
+        }
+    }
+
+    /// Run Whisper transcription
+    fn transcribe_audio(
+        &self,
+        audio: &[f32],
+        language: &str,
+    ) -> Result<String, Box<dyn std::error::Error>> {
+        if let Some(ref whisper) = self.whisper {
+            Ok(whisper.transcribe(audio, language)?)
+        } else {
+            Err("Whisper model not loaded. Call init_models first.".into())
+        }
+    }
+
+    /// Run LLM polishing (gracefully falls back to raw text on any failure)
+    fn polish_text(&mut self, raw_text: &str, settings: &AppSettings) -> String {
+        if !settings.enable_polish {
+            log::info!("Text polishing disabled by user settings");
+            return raw_text.to_string();
+        }
+
+        self.set_status(PipelineStatus::Polishing);
+
+        if let Some(ref llm) = self.llm {
+            match llm.polish(raw_text) {
+                Ok(text) if !text.is_empty() => text,
+                Ok(_) => {
+                    log::warn!("LLM returned empty result, using raw text");
+                    raw_text.to_string()
+                }
+                Err(e) => {
+                    log::warn!("LLM polishing failed, using raw text: {}", e);
+                    raw_text.to_string()
+                }
+            }
+        } else {
+            log::info!("No LLM model loaded, using raw transcription");
+            raw_text.to_string()
+        }
     }
 
     /// Simulate keyboard typing to output text
