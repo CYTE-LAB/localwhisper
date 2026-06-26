@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { PipelineStatus, DictationEntry } from "../App";
 
@@ -14,6 +14,16 @@ export default function MainView({ status, modelsReady, history, onOpenSettings,
   const [loadingModels, setLoadingModels] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [lastError, setLastError] = useState<string | null>(null);
+
+  // Show error messages briefly then auto-dismiss
+  useEffect(() => {
+    if (typeof status === "object" && "error" in status) {
+      setLastError(status.error);
+      const timer = setTimeout(() => setLastError(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [status]);
 
   const statusText = () => {
     if (typeof status === "object" && "error" in status) return status.error;
@@ -95,6 +105,15 @@ export default function MainView({ status, modelsReady, history, onOpenSettings,
           </button>
         </div>
       </div>
+
+      {/* Error Toast */}
+      {lastError && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 animate-fade-in-toast">
+          <div className="px-4 py-2 rounded-lg bg-red-500/10 border border-red-500/20 backdrop-blur-sm">
+            <p className="text-xs text-red-400">{lastError}</p>
+          </div>
+        </div>
+      )}
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col items-center justify-center p-8">

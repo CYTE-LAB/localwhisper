@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `tray-icon` and `image-png` Tauri features for tray functionality
 
 ### Fixed
+- **Pipeline error recovery** — all error paths now reset status to Idle, preventing the app from getting permanently stuck after a failure
+- **Pre-recording model check** — app now validates Whisper is loaded before starting recording, instead of failing silently after the user finishes speaking
+- **Error toast in UI** — transient errors (mic failure, transcription error) now show a brief notification that auto-dismisses after 5 seconds
 - **Language setting now actually affects Whisper transcription** — previously hardcoded to "auto"
 - **Onboarding no longer overwrites user settings** — now merges with existing preferences
 - Whisper thread count now auto-detects available CPU cores (capped at 8)
