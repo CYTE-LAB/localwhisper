@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Persistent dictation history**: History is now saved to localStorage and survives app restarts (up to 100 entries)
+- **Structured dictation results**: Backend now emits rich result objects (raw_text, polished_text, success, error, timestamp) instead of plain strings
+- **Clear history button**: Users can clear all history from the history panel
 - **Enhanced audio compatibility**: Support for multiple input sample formats (f32, i16, u16), improving reliability across different microphones
 - **Production-ready model paths**: Improved logic to find models in system-standard local data directories when packaged
 - GitHub Actions CI workflow (Rust check + frontend build)
@@ -21,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `tray-icon` and `image-png` Tauri features for tray functionality
 
 ### Fixed
+- **Skip redundant model loading** — `init_models` now checks if models are already in memory before reloading, preventing unnecessary multi-second delays
+- **Failed dictations now appear in history** — even if keyboard output fails, the transcribed text is still emitted so users never lose their words
+- **History shows raw vs polished diff** — when LLM polishing changes the text, the original is shown with strikethrough below the polished version
 - **Pipeline error recovery** — all error paths now reset status to Idle, preventing the app from getting permanently stuck after a failure
 - **Pre-recording model check** — app now validates Whisper is loaded before starting recording, instead of failing silently after the user finishes speaking
 - **Error toast in UI** — transient errors (mic failure, transcription error) now show a brief notification that auto-dismisses after 5 seconds

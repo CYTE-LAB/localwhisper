@@ -8,9 +8,10 @@ interface MainViewProps {
   history: DictationEntry[];
   onOpenSettings: () => void;
   onModelsLoaded: () => void;
+  onClearHistory: () => void;
 }
 
-export default function MainView({ status, modelsReady, history, onOpenSettings, onModelsLoaded }: MainViewProps) {
+export default function MainView({ status, modelsReady, history, onOpenSettings, onModelsLoaded, onClearHistory }: MainViewProps) {
   const [loadingModels, setLoadingModels] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
@@ -120,7 +121,17 @@ export default function MainView({ status, modelsReady, history, onOpenSettings,
         {showHistory ? (
           /* History Panel */
           <div className="w-full max-w-sm">
-            <h3 className="text-sm font-medium text-gray-300 mb-3">Recent Dictations</h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-gray-300">Recent Dictations</h3>
+              {history.length > 0 && (
+                <button
+                  onClick={onClearHistory}
+                  className="text-[10px] text-gray-500 hover:text-red-400 transition-colors"
+                >
+                  Clear All
+                </button>
+              )}
+            </div>
             {history.length === 0 ? (
               <div className="text-center py-8">
                 <p className="text-xs text-gray-500">No dictations yet.</p>
@@ -131,9 +142,28 @@ export default function MainView({ status, modelsReady, history, onOpenSettings,
                 {history.map((entry) => (
                   <div
                     key={entry.id}
-                    className="p-3 rounded-lg bg-white/5 border border-white/5 hover:border-white/10 transition-colors group"
+                    className={`p-3 rounded-lg border transition-colors group ${
+                      entry.success
+                        ? "bg-white/5 border-white/5 hover:border-white/10"
+                        : "bg-red-500/5 border-red-500/10 hover:border-red-500/20"
+                    }`}
                   >
-                    <p className="text-xs text-gray-300 leading-relaxed">{entry.text}</p>
+                    {entry.success ? (
+                      <>
+                        <p className="text-xs text-gray-300 leading-relaxed">
+                          {entry.polished_text || entry.raw_text}
+                        </p>
+                        {entry.raw_text && entry.polished_text && entry.raw_text !== entry.polished_text && (
+                          <p className="text-[10px] text-gray-600 mt-1 line-through">
+                            {entry.raw_text}
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-xs text-red-400 leading-relaxed">
+                        {entry.error || "Failed"}
+                      </p>
+                    )}
                     <p className="text-[10px] text-gray-600 mt-1.5">{formatTime(entry.timestamp)}</p>
                   </div>
                 ))}
