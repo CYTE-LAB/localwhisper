@@ -20,6 +20,16 @@ pub enum PipelineStatus {
     Error(String),
 }
 
+/// Result emitted to frontend after each dictation attempt
+#[derive(Debug, Clone, Serialize)]
+pub struct DictationResult {
+    pub raw_text: String,
+    pub polished_text: String,
+    pub success: bool,
+    pub error: Option<String>,
+    pub timestamp: u64,
+}
+
 /// Manages the full dictation pipeline (synchronous — runs in Mutex)
 pub struct PipelineManager {
     app_handle: AppHandle,
@@ -40,35 +50,43 @@ impl PipelineManager {
         }
     }
 
-    /// Load AI models into memory
+    /// Load AI models into memory (skips if already loaded)
     pub fn load_models(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let models_path = models_dir();
 
-        // Load Whisper model
-        let whisper_path = models_path.join("ggml-large-v3-turbo.bin");
-        if whisper_path.exists() {
-            self.whisper = Some(WhisperEngine::new(&whisper_path)?);
-            log::info!("Whisper model loaded");
+        // Load Whisper model (skip if already loaded)
+        if self.whisper.is_none() {
+            let whisper_path = models_path.join("ggml-large-v3-turbo.bin");
+            if whisper_path.exists() {
+                self.whisper = Some(WhisperEngine::new(&whisper_path)?);
+                log::info!("Whisper model loaded");
+            } else {
+                log::warn!("Whisper model not found at {:?}", whisper_path);
+                return Err(format!(
+                    "Whisper model not found. Please download it to: {:?}",
+                    whisper_path
+                )
+                .into());
+            }
         } else {
-            log::warn!("Whisper model not found at {:?}", whisper_path);
-            return Err(format!(
-                "Whisper model not found. Please download it to: {:?}",
-                whisper_path
-            )
-            .into());
+            log::info!("Whisper model already loaded, skipping");
         }
 
-        // Load LLM model
-        let llm_path = models_path.join("gemma-3-1b-it-Q4_K_M.gguf");
-        if llm_path.exists() {
-            self.llm = Some(LlmEngine::new(&llm_path)?);
-            log::info!("LLM model loaded");
+        // Load LLM model (skip if already loaded)
+        if self.llm.is_none() {
+            let llm_path = models_path.join("gemma-3-1b-it-Q4_K_M.gguf");
+            if llm_path.exists() {
+                self.llm = Some(LlmEngine::new(&llm_path)?);
+                log::info!("LLM model loaded");
+            } else {
+                log::warn!(
+                    "LLM model not found at {:?}. Text polishing will be disabled.",
+                    llm_path
+                );
+                // LLM is optional — don't fail if missing
+            }
         } else {
-            log::warn!(
-                "LLM model not found at {:?}. Text polishing will be disabled.",
-                llm_path
-            );
-            // LLM is optional — don't fail if missing
+            log::info!("LLM model already loaded, skipping");
         }
 
         Ok(())
@@ -135,6 +153,10 @@ impl PipelineManager {
 
         // Load user settings
         let settings = AppSettings::load().unwrap_or_default();
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
 
         // 1. Stop recording and get audio
         let audio = match self.stop_recorder() {
@@ -142,6 +164,7 @@ impl PipelineManager {
             Err(e) => {
                 let err_msg = format!("Failed to stop recording: {}", e);
                 log::error!("{}", err_msg);
+                self.emit_result("", "", false, Some(&err_msg), timestamp);
                 self.set_status(PipelineStatus::Error(err_msg.clone()));
                 self.set_status(PipelineStatus::Idle);
                 return Err(err_msg.into());
@@ -155,6 +178,7 @@ impl PipelineManager {
             Err(e) => {
                 let err_msg = format!("Transcription failed: {}", e);
                 log::error!("{}", err_msg);
+                self.emit_result("", "", false, Some(&err_msg), timestamp);
                 self.set_status(PipelineStatus::Error(err_msg.clone()));
                 self.set_status(PipelineStatus::Idle);
                 return Err(err_msg.into());
@@ -162,6 +186,7 @@ impl PipelineManager {
         };
 
         if raw_text.is_empty() {
+            self.emit_result("", "", true, None, timestamp);
             self.set_status(PipelineStatus::Idle);
             return Ok(String::new());
         }
@@ -174,6 +199,8 @@ impl PipelineManager {
         if let Err(e) = self.type_text(&polished_text) {
             let err_msg = format!("Typing failed: {}", e);
             log::error!("{}", err_msg);
+            // Still emit the result so user can see what was transcribed
+            self.emit_result(&raw_text, &polished_text, false, Some(&err_msg), timestamp);
             self.set_status(PipelineStatus::Error(err_msg.clone()));
             self.set_status(PipelineStatus::Idle);
             return Err(err_msg.into());
@@ -182,10 +209,29 @@ impl PipelineManager {
         // 5. Done — always return to Idle
         self.set_status(PipelineStatus::Idle);
 
-        // Emit the result to the frontend for display
-        let _ = self.app_handle.emit("dictation-result", &polished_text);
+        // Emit the successful result to the frontend
+        self.emit_result(&raw_text, &polished_text, true, None, timestamp);
 
         Ok(polished_text)
+    }
+
+    /// Emit a structured dictation result event to the frontend
+    fn emit_result(
+        &self,
+        raw_text: &str,
+        polished_text: &str,
+        success: bool,
+        error: Option<&str>,
+        timestamp: u64,
+    ) {
+        let result = DictationResult {
+            raw_text: raw_text.to_string(),
+            polished_text: polished_text.to_string(),
+            success,
+            error: error.map(|e| e.to_string()),
+            timestamp,
+        };
+        let _ = self.app_handle.emit("dictation-result", &result);
     }
 
     /// Stop the recorder and return audio samples

@@ -10,7 +10,10 @@ export type PipelineStatus = "idle" | "recording" | "transcribing" | "polishing"
 
 export interface DictationEntry {
   id: number;
-  text: string;
+  raw_text: string;
+  polished_text: string;
+  success: boolean;
+  error: string | null;
   timestamp: number;
 }
 
@@ -21,11 +24,42 @@ interface ModelStatusResponse {
   llm_model_path: string | null;
 }
 
+interface DictationResultPayload {
+  raw_text: string;
+  polished_text: string;
+  success: boolean;
+  error: string | null;
+  timestamp: number;
+}
+
+const HISTORY_STORAGE_KEY = "localwhisper_history";
+const MAX_HISTORY = 100;
+
+function loadHistory(): DictationEntry[] {
+  try {
+    const stored = localStorage.getItem(HISTORY_STORAGE_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (e) {
+    console.error("Failed to load history from localStorage:", e);
+  }
+  return [];
+}
+
+function saveHistory(history: DictationEntry[]) {
+  try {
+    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history));
+  } catch (e) {
+    console.error("Failed to save history to localStorage:", e);
+  }
+}
+
 function App() {
   const [view, setView] = useState<View>("main");
   const [status, setStatus] = useState<PipelineStatus>("idle");
   const [modelsReady, setModelsReady] = useState(false);
-  const [history, setHistory] = useState<DictationEntry[]>([]);
+  const [history, setHistory] = useState<DictationEntry[]>(loadHistory);
 
   const checkModelStatus = async () => {
     try {
@@ -54,17 +88,24 @@ function App() {
       setStatus(event.payload);
     });
 
-    // Listen for dictation results
-    const unlistenResult = listen<string>("dictation-result", (event) => {
-      if (event.payload && event.payload.trim()) {
-        setHistory((prev) => [
-          {
-            id: Date.now(),
-            text: event.payload,
-            timestamp: Date.now(),
-          },
-          ...prev,
-        ].slice(0, 50)); // Keep last 50 entries
+    // Listen for dictation results (structured payload)
+    const unlistenResult = listen<DictationResultPayload>("dictation-result", (event) => {
+      const result = event.payload;
+      // Only add to history if there's actual content or a meaningful error
+      if (result.raw_text || result.polished_text || result.error) {
+        const entry: DictationEntry = {
+          id: Date.now(),
+          raw_text: result.raw_text,
+          polished_text: result.polished_text,
+          success: result.success,
+          error: result.error,
+          timestamp: result.timestamp * 1000, // Convert from seconds to milliseconds
+        };
+        setHistory((prev) => {
+          const updated = [entry, ...prev].slice(0, MAX_HISTORY);
+          saveHistory(updated);
+          return updated;
+        });
       }
     });
 
@@ -84,6 +125,11 @@ function App() {
     checkModelStatus();
   };
 
+  const handleClearHistory = () => {
+    setHistory([]);
+    saveHistory([]);
+  };
+
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white select-none">
       {view === "onboarding" && (
@@ -96,6 +142,7 @@ function App() {
           history={history}
           onOpenSettings={() => setView("settings")}
           onModelsLoaded={handleModelsLoaded}
+          onClearHistory={handleClearHistory}
         />
       )}
       {view === "settings" && (
