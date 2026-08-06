@@ -305,6 +305,15 @@ impl PipelineManager {
         self.status.clone()
     }
 
+    /// Get current audio volume level
+    pub fn get_rms(&self) -> f32 {
+        if let Some(ref recorder) = self.recorder {
+            recorder.get_rms()
+        } else {
+            0.0
+        }
+    }
+
     /// Get model loading status
     pub fn model_status(&self) -> ModelStatus {
         let models_path = models_dir();

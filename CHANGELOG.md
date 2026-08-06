@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Real-time volume visualization**: Live audio level (RMS) meter during recording, providing visual feedback of microphone input in both MainView and Onboarding test step
+- **GitHub Actions release workflow**: Automated multi-platform builds (macOS Intel/Apple Silicon, Windows, Linux) triggered by version tags
+- **GitHub Actions CI workflow**: TypeScript type-checking and Rust clippy/fmt checks on every PR
+- **Processing spinner**: Non-recording active states (transcribing, polishing, outputting) now show a spinner instead of static bars
 - **Persistent dictation history**: History is now saved to localStorage and survives app restarts (up to 100 entries)
 - **Structured dictation results**: Backend now emits rich result objects (raw_text, polished_text, success, error, timestamp) instead of plain strings
 - **Clear history button**: Users can clear all history from the history panel

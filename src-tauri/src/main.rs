@@ -137,6 +137,7 @@ fn main() {
             commands::update_settings,
             commands::init_models,
             commands::get_model_status,
+            commands::get_rms,
         ])
         .run(tauri::generate_context!())
         .expect("error while running LocalWhisper");
@@ -186,5 +187,11 @@ mod commands {
     pub fn get_model_status(state: State<'_, AppState>) -> ModelStatus {
         let pipeline = state.pipeline.lock();
         pipeline.model_status()
+    }
+
+    #[tauri::command]
+    pub fn get_rms(state: State<'_, AppState>) -> f32 {
+        let pipeline = state.pipeline.lock();
+        pipeline.get_rms()
     }
 }

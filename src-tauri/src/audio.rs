@@ -2,6 +2,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, Stream, StreamConfig};
 use parking_lot::Mutex;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 /// Target sample rate for Whisper (16kHz mono f32)
 const TARGET_SAMPLE_RATE: u32 = 16000;
@@ -14,6 +15,7 @@ pub struct AudioRecorder {
     stream: Option<Stream>,
     buffer: Arc<Mutex<Vec<f32>>>,
     is_recording: bool,
+    current_rms: Arc<AtomicU32>, // Store RMS level as u32 (multiplied by 1000) for atomic access
 }
 
 impl AudioRecorder {
@@ -51,6 +53,7 @@ impl AudioRecorder {
             stream: None,
             buffer: Arc::new(Mutex::new(Vec::new())),
             is_recording: false,
+            current_rms: Arc::new(AtomicU32::new(0)),
         })
     }
 
@@ -60,10 +63,12 @@ impl AudioRecorder {
             return Ok(());
         }
 
-        // Clear the buffer
+        // Clear the buffer and reset RMS
         self.buffer.lock().clear();
+        self.current_rms.store(0, Ordering::Relaxed);
 
         let buffer_clone = self.buffer.clone();
+        let rms_clone = self.current_rms.clone();
         let channels = self.config.channels as usize;
 
         let err_fn = move |err| {
@@ -74,6 +79,8 @@ impl AudioRecorder {
             SampleFormat::F32 => self.device.build_input_stream(
                 &self.config,
                 move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                    let rms = calculate_rms(data);
+                    rms_clone.store((rms * 1000.0) as u32, Ordering::Relaxed);
                     write_to_buffer(data, channels, &buffer_clone);
                 },
                 err_fn,
@@ -86,6 +93,8 @@ impl AudioRecorder {
                         .iter()
                         .map(|&s| s as f32 / i16::MAX as f32)
                         .collect();
+                    let rms = calculate_rms(&f32_data);
+                    rms_clone.store((rms * 1000.0) as u32, Ordering::Relaxed);
                     write_to_buffer(&f32_data, channels, &buffer_clone);
                 },
                 err_fn,
@@ -98,6 +107,8 @@ impl AudioRecorder {
                         .iter()
                         .map(|&s| (s as f32 - u16::MAX as f32 / 2.0) / (u16::MAX as f32 / 2.0))
                         .collect();
+                    let rms = calculate_rms(&f32_data);
+                    rms_clone.store((rms * 1000.0) as u32, Ordering::Relaxed);
                     write_to_buffer(&f32_data, channels, &buffer_clone);
                 },
                 err_fn,
@@ -131,6 +142,7 @@ impl AudioRecorder {
         // Drop the stream to stop recording
         self.stream = None;
         self.is_recording = false;
+        self.current_rms.store(0, Ordering::Relaxed);
 
         let raw_samples = self.buffer.lock().clone();
         log::info!(
@@ -162,6 +174,20 @@ impl AudioRecorder {
     pub fn is_recording(&self) -> bool {
         self.is_recording
     }
+
+    /// Get current audio volume level (0.0 to 1.0)
+    pub fn get_rms(&self) -> f32 {
+        self.current_rms.load(Ordering::Relaxed) as f32 / 1000.0
+    }
+}
+
+/// Calculate Root Mean Square (RMS) of audio data
+fn calculate_rms(data: &[f32]) -> f32 {
+    if data.is_empty() {
+        return 0.0;
+    }
+    let sum_sq: f32 = data.iter().map(|&s| s * s).sum();
+    (sum_sq / data.len() as f32).sqrt()
 }
 
 /// Helper to convert interleaved multi-channel data to mono f32 and write to buffer

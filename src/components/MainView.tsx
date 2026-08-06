@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { PipelineStatus, DictationEntry } from "../App";
 
@@ -16,6 +16,34 @@ export default function MainView({ status, modelsReady, history, onOpenSettings,
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
+  const [rms, setRms] = useState(0);
+  const rmsIntervalRef = useRef<number | null>(null);
+
+  // Poll for RMS level when recording
+  useEffect(() => {
+    if (status === "recording") {
+      rmsIntervalRef.current = window.setInterval(async () => {
+        try {
+          const level = await invoke<number>("get_rms");
+          setRms(level);
+        } catch (e) {
+          console.error("Failed to get RMS:", e);
+        }
+      }, 50); // 20fps for smooth visualization
+    } else {
+      if (rmsIntervalRef.current) {
+        clearInterval(rmsIntervalRef.current);
+        rmsIntervalRef.current = null;
+      }
+      setRms(0);
+    }
+
+    return () => {
+      if (rmsIntervalRef.current) {
+        clearInterval(rmsIntervalRef.current);
+      }
+    };
+  }, [status]);
 
   // Show error messages briefly then auto-dismiss
   useEffect(() => {
@@ -69,6 +97,10 @@ export default function MainView({ status, modelsReady, history, onOpenSettings,
     const date = new Date(timestamp);
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
+
+  // Calculate visual scale for the wave bars based on RMS
+  // Normalize RMS (typically 0.0 to 0.3 for normal speech) to a 0-1 scale
+  const normalizedRms = Math.min(rms * 5, 1);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -176,16 +208,30 @@ export default function MainView({ status, modelsReady, history, onOpenSettings,
             {/* Status Indicator */}
             <div className={`w-24 h-24 rounded-full flex items-center justify-center mb-6 transition-all duration-300 ${
               isActive
-                ? "bg-green-500/10 border-2 border-green-500/50 animate-pulse"
+                ? "bg-green-500/10 border-2 border-green-500/50"
                 : "bg-white/5 border border-white/10"
             }`}>
               {status === "recording" ? (
-                <div className="flex items-center gap-1">
-                  <div className="w-1 h-4 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                  <div className="w-1 h-6 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                  <div className="w-1 h-5 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-                  <div className="w-1 h-3 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: "450ms" }} />
+                <div className="flex items-center gap-1.5 h-8">
+                  <div 
+                    className="w-1.5 bg-green-400 rounded-full transition-all duration-75" 
+                    style={{ height: `${Math.max(4, normalizedRms * 32)}px` }} 
+                  />
+                  <div 
+                    className="w-1.5 bg-green-400 rounded-full transition-all duration-75" 
+                    style={{ height: `${Math.max(6, normalizedRms * 48)}px` }} 
+                  />
+                  <div 
+                    className="w-1.5 bg-green-400 rounded-full transition-all duration-75" 
+                    style={{ height: `${Math.max(4, normalizedRms * 40)}px` }} 
+                  />
+                  <div 
+                    className="w-1.5 bg-green-400 rounded-full transition-all duration-75" 
+                    style={{ height: `${Math.max(3, normalizedRms * 24)}px` }} 
+                  />
                 </div>
+              ) : isActive ? (
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
               ) : (
                 <svg className="w-8 h-8 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
                   <path d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" />
