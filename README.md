@@ -75,14 +75,16 @@ curl -L -o src-tauri/models/gemma-3-1b-it-Q4_K_M.gguf \
 |---------|--------|-------------|
 | Voice Dictation | ✅ | Press-and-hold shortcut to record, release to transcribe |
 | AI Text Polishing | ✅ | Gemma 3 removes filler words, fixes grammar |
+| Real-time Volume Viz | ✅ | Live audio level meter during recording |
 | System Tray | ✅ | Runs in background, always ready |
 | Dictation History | ✅ | View recent transcriptions with timestamps |
 | Onboarding Wizard | ✅ | 6-step guided setup (permissions, shortcut, models, test) |
+| CI/CD Pipeline | ✅ | GitHub Actions for PR checks and automated release builds |
 | Custom Shortcut | 🔜 | UI-based shortcut capture |
 | In-App Model Download | 🔜 | Download models with progress bar inside the app |
 | Context-Aware Formatting | 🔜 | Detect active app and adjust output format |
 | License Verification | 🔜 | Lemon Squeezy integration for commercial distribution |
-| Installers | 🔜 | macOS `.dmg` and Windows `.msi` |
+| Installers | ✅ | macOS `.dmg`, Windows `.msi`, Linux `.deb` via GitHub Actions |
 | Auto-Update | 🔜 | Built-in update mechanism |
 
 ## Architecture
