@@ -1,5 +1,6 @@
 # Rust
 /src-tauri/target/
+/src-tauri/gen/
 **/*.rs.bk
 
 # Node
@@ -12,6 +13,7 @@ build/
 # Models (too large for git)
 /src-tauri/models/*.bin
 /src-tauri/models/*.gguf
+/src-tauri/models/*.part
 *.ggml
 
 # IDE

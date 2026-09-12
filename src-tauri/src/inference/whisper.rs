@@ -54,7 +54,7 @@ impl WhisperEngine {
         params.set_print_progress(false);
         params.set_print_realtime(false);
         params.set_suppress_blank(true);
-        params.set_suppress_non_speech_tokens(true);
+        params.set_suppress_nst(true);
 
         // Run inference
         state
@@ -62,15 +62,11 @@ impl WhisperEngine {
             .map_err(|e| WhisperError::InferenceError(e.to_string()))?;
 
         // Collect all segments into a single string
-        let num_segments = state
-            .full_n_segments()
-            .map_err(|e| WhisperError::InferenceError(e.to_string()))?;
-
         let mut text = String::new();
-        for i in 0..num_segments {
-            if let Ok(segment) = state.full_get_segment_text(i) {
-                text.push_str(&segment);
-            }
+        for segment in state.as_iter() {
+            let segment_text = segment.to_str_lossy()
+                .map_err(|e| WhisperError::InferenceError(e.to_string()))?;
+            text.push_str(&segment_text);
         }
 
         let result = text.trim().to_string();

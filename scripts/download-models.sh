@@ -20,21 +20,21 @@ if [ -f "$WHISPER_FILE" ]; then
     echo "✓ Whisper model already exists: $WHISPER_FILE"
 else
     echo "↓ Downloading Whisper Large V3 Turbo (~1.5 GB)..."
-    curl -L --progress-bar -o "$WHISPER_FILE" "$WHISPER_URL"
+    curl -fL --retry 3 --progress-bar -o "$WHISPER_FILE" "$WHISPER_URL"
     echo "✓ Whisper model downloaded"
 fi
 
 echo ""
 
-# Gemma 3 1B IT Q4_K_M (~650 MB)
+# Gemma 3 1B IT Q4_K_M (~806 MB)
 LLM_FILE="$MODELS_DIR/gemma-3-1b-it-Q4_K_M.gguf"
-LLM_URL="https://huggingface.co/bartowski/gemma-3-1b-it-GGUF/resolve/main/gemma-3-1b-it-Q4_K_M.gguf"
+LLM_URL="https://huggingface.co/bartowski/google_gemma-3-1b-it-GGUF/resolve/116f76234503685a98f572982177b11d44ec8ff1/google_gemma-3-1b-it-Q4_K_M.gguf"
 
 if [ -f "$LLM_FILE" ]; then
     echo "✓ Gemma 3 model already exists: $LLM_FILE"
 else
-    echo "↓ Downloading Gemma 3 1B IT Q4_K_M (~650 MB)..."
-    curl -L --progress-bar -o "$LLM_FILE" "$LLM_URL"
+    echo "↓ Downloading Gemma 3 1B IT Q4_K_M (~806 MB)..."
+    curl -fL --retry 3 --progress-bar -o "$LLM_FILE" "$LLM_URL"
     echo "✓ Gemma 3 model downloaded"
 fi
 

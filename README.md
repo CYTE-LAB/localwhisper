@@ -69,6 +69,21 @@ curl -L -o src-tauri/models/gemma-3-1b-it-Q4_K_M.gguf \
   https://huggingface.co/bartowski/gemma-3-1b-it-GGUF/resolve/main/gemma-3-1b-it-Q4_K_M.gguf
 ```
 
+### Local model smoke test (macOS)
+
+With both models downloaded, generate a harmless test recording using the built-in offline speech synthesizer, then exercise the same Whisper and Gemma wrappers as the app. This does not record the microphone or type into another application.
+
+```bash
+say -v Samantha -r 140 -o /private/tmp/localwhisper-smoke.aiff \
+  'This is a local speech recognition test. We have a meeting tomorrow at three in the afternoon. Please prepare the project notes.'
+afconvert /private/tmp/localwhisper-smoke.aiff /private/tmp/localwhisper-smoke.wav \
+  -f WAVE -d LEI16@16000 -c 1
+cargo run --release --manifest-path src-tauri/Cargo.toml --example model_smoke -- \
+  /private/tmp/localwhisper-smoke.wav
+```
+
+The example checks actual English transcription, English and Chinese polishing, UTF-8 output, and preservation of key facts. Both inference models load and run successfully with `llama-cpp-2` 0.1.156. The current Gemma 3 1B model can still omit meaning: in the local test, `嗯，那个，我们明天下午三点开会，请你提前准备一下项目资料。` became `请你提前准备项目资料。`. The example deliberately returns a failing result for this lost meeting information. Optional AI polishing is off by default; review its output if you enable it.
+
 ## Features
 
 | Feature | Status | Description |
@@ -97,7 +112,7 @@ LocalWhisper is built with a **Tauri + React** stack, optimized for maximum perf
 | Desktop Framework | Tauri v2 (Rust) | App shell, IPC, global shortcut, system tray |
 | Audio Capture | `cpal` | Microphone recording + mono resampling |
 | STT Engine | `whisper-rs` (embedded `whisper.cpp`) | Speech-to-text |
-| LLM Engine | `llama-cpp-4` (embedded `llama.cpp`) | Text polishing |
+| LLM Engine | `llama-cpp-2` (embedded `llama.cpp`) | Text polishing |
 | Keyboard Output | `enigo` | Simulate typing into active window |
 
 ```

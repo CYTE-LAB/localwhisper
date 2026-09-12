@@ -237,7 +237,7 @@ impl PipelineManager {
     /// Stop the recorder and return audio samples
     fn stop_recorder(&mut self) -> Result<Vec<f32>, Box<dyn std::error::Error>> {
         if let Some(ref mut recorder) = self.recorder {
-            recorder.stop()
+            Ok(recorder.stop()?)
         } else {
             Err("No recorder available".into())
         }
