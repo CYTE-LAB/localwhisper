@@ -8,7 +8,7 @@ mod settings;
 
 use parking_lot::Mutex;
 use pipeline::PipelineManager;
-use std::sync::Arc;
+use std::sync::{mpsc, Arc};
 use tauri::{
     image::Image,
     menu::{Menu, MenuItem},
@@ -34,24 +34,41 @@ pub struct ModelStatus {
 fn main() {
     env_logger::init();
 
+    // Keep press/release order while permission prompts and inference run away
+    // from the macOS event loop.
+    let (shortcut_tx, shortcut_rx) =
+        mpsc::channel::<(Arc<Mutex<PipelineManager>>, ShortcutState)>();
+    std::thread::Builder::new()
+        .name("localwhisper-shortcut".into())
+        .spawn(move || {
+            while let Ok((pipeline, state)) = shortcut_rx.recv() {
+                let mut pipeline = pipeline.lock();
+                match state {
+                    ShortcutState::Pressed => {
+                        if let Err(e) = pipeline.start_recording() {
+                            log::error!("Failed to start recording: {}", e);
+                        }
+                    }
+                    ShortcutState::Released => {
+                        if let Err(e) = pipeline.stop_and_process() {
+                            log::error!("Failed to process recording: {}", e);
+                        }
+                    }
+                }
+            }
+        })
+        .expect("failed to start shortcut worker");
+
     tauri::Builder::default()
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, _shortcut, event| {
+                .with_handler(move |app, _shortcut, event| {
                     let state = app.state::<AppState>();
-                    match event.state() {
-                        ShortcutState::Pressed => {
-                            let mut pipeline = state.pipeline.lock();
-                            if let Err(e) = pipeline.start_recording() {
-                                log::error!("Failed to start recording: {}", e);
-                            }
-                        }
-                        ShortcutState::Released => {
-                            let mut pipeline = state.pipeline.lock();
-                            if let Err(e) = pipeline.stop_and_process() {
-                                log::error!("Failed to process recording: {}", e);
-                            }
-                        }
+                    if shortcut_tx
+                        .send((state.pipeline.clone(), event.state()))
+                        .is_err()
+                    {
+                        log::error!("Shortcut worker is unavailable");
                     }
                 })
                 .build(),
@@ -69,17 +86,20 @@ fn main() {
 
             // Register global shortcut (Cmd+Shift+Space)
             let shortcut: Shortcut = "CmdOrCtrl+Shift+Space".parse().unwrap();
-            app.global_shortcut().register(shortcut).unwrap_or_else(|e| {
-                log::error!("Failed to register global shortcut: {}", e);
-            });
+            app.global_shortcut()
+                .register(shortcut)
+                .unwrap_or_else(|e| {
+                    log::error!("Failed to register global shortcut: {}", e);
+                });
 
             // --- System Tray ---
             let quit = MenuItem::with_id(app, "quit", "Quit LocalWhisper", true, None::<&str>)?;
             let show = MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show, &quit])?;
 
-            let tray_icon = Image::from_path("icons/icon.png")
-                .unwrap_or_else(|_| Image::from_bytes(include_bytes!("../icons/32x32.png")).unwrap());
+            let tray_icon = Image::from_path("icons/icon.png").unwrap_or_else(|_| {
+                Image::from_bytes(include_bytes!("../icons/32x32.png")).unwrap()
+            });
 
             let _tray = TrayIconBuilder::new()
                 .icon(tray_icon)
@@ -150,21 +170,36 @@ mod commands {
     use tauri::State;
 
     #[tauri::command]
-    pub fn start_recording(state: State<'_, AppState>) -> Result<(), String> {
-        let mut pipeline = state.pipeline.lock();
-        pipeline.start_recording().map_err(|e| e.to_string())
+    pub async fn start_recording(state: State<'_, AppState>) -> Result<(), String> {
+        let pipeline = state.pipeline.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            let mut pipeline = pipeline.lock();
+            pipeline.start_recording().map_err(|e| e.to_string())
+        })
+        .await
+        .map_err(|e| format!("Recording worker failed: {}", e))?
     }
 
     #[tauri::command]
-    pub fn stop_recording(state: State<'_, AppState>) -> Result<String, String> {
-        let mut pipeline = state.pipeline.lock();
-        pipeline.stop_and_process().map_err(|e| e.to_string())
+    pub async fn stop_recording(state: State<'_, AppState>) -> Result<String, String> {
+        let pipeline = state.pipeline.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            let mut pipeline = pipeline.lock();
+            pipeline.stop_and_process().map_err(|e| e.to_string())
+        })
+        .await
+        .map_err(|e| format!("Transcription worker failed: {}", e))?
     }
 
     #[tauri::command]
-    pub fn get_pipeline_status(state: State<'_, AppState>) -> PipelineStatus {
-        let pipeline = state.pipeline.lock();
-        pipeline.status()
+    pub async fn get_pipeline_status(state: State<'_, AppState>) -> Result<PipelineStatus, String> {
+        let pipeline = state.pipeline.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            let pipeline = pipeline.lock();
+            pipeline.status()
+        })
+        .await
+        .map_err(|e| format!("Status worker failed: {}", e))
     }
 
     #[tauri::command]
@@ -178,20 +213,33 @@ mod commands {
     }
 
     #[tauri::command]
-    pub fn init_models(state: State<'_, AppState>) -> Result<(), String> {
-        let mut pipeline = state.pipeline.lock();
-        pipeline.load_models().map_err(|e| e.to_string())
+    pub async fn init_models(state: State<'_, AppState>) -> Result<(), String> {
+        let pipeline = state.pipeline.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            let mut pipeline = pipeline.lock();
+            pipeline.load_models().map_err(|e| e.to_string())
+        })
+        .await
+        .map_err(|e| format!("Model worker failed: {}", e))?
     }
 
     #[tauri::command]
-    pub fn get_model_status(state: State<'_, AppState>) -> ModelStatus {
-        let pipeline = state.pipeline.lock();
-        pipeline.model_status()
+    pub async fn get_model_status(state: State<'_, AppState>) -> Result<ModelStatus, String> {
+        let pipeline = state.pipeline.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            let pipeline = pipeline.lock();
+            pipeline.model_status()
+        })
+        .await
+        .map_err(|e| format!("Model status worker failed: {}", e))
     }
 
     #[tauri::command]
     pub fn get_rms(state: State<'_, AppState>) -> f32 {
-        let pipeline = state.pipeline.lock();
-        pipeline.get_rms()
+        state
+            .pipeline
+            .try_lock()
+            .map(|pipeline| pipeline.get_rms())
+            .unwrap_or(0.0)
     }
 }

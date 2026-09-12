@@ -11,9 +11,11 @@ pub fn models_dir() -> PathBuf {
     }
 
     // 2. In development, use the local models/ directory
-    let dev_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("models");
-    if dev_path.exists() {
-        return dev_path;
+    if cfg!(debug_assertions) {
+        let dev_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("models");
+        if dev_path.exists() {
+            return dev_path;
+        }
     }
 
     // 3. Fallback to app data directory (OS-specific local data directory)

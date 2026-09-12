@@ -1,15 +1,130 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{SampleFormat, Stream, StreamConfig};
+use cpal::{Device, SampleFormat, Stream, StreamConfig};
 use parking_lot::Mutex;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::mpsc::{self, Sender};
+use std::sync::Arc;
+use std::thread::{self, JoinHandle};
 
 /// Target sample rate for Whisper (16kHz mono f32)
 const TARGET_SAMPLE_RATE: u32 = 16000;
 
-/// Audio recorder that captures microphone input
+/// Thread-safe controller. CPAL objects remain on the audio worker thread.
 pub struct AudioRecorder {
-    device: cpal::Device,
+    command_tx: Sender<AudioCommand>,
+    worker: Option<JoinHandle<()>>,
+    is_recording: bool,
+    current_rms: Arc<AtomicU32>,
+}
+
+enum AudioCommand {
+    Start(Sender<Result<(), AudioError>>),
+    Stop(Sender<Result<Vec<f32>, AudioError>>),
+    Shutdown,
+}
+
+impl AudioRecorder {
+    /// Create a worker that owns the default microphone and its audio stream.
+    pub fn new() -> Result<Self, AudioError> {
+        let (command_tx, command_rx) = mpsc::channel();
+        let (ready_tx, ready_rx) = mpsc::channel();
+        let current_rms = Arc::new(AtomicU32::new(0));
+        let worker_rms = current_rms.clone();
+
+        let worker = thread::Builder::new()
+            .name("localwhisper-audio".into())
+            .spawn(move || {
+                let mut recorder = match AudioWorker::new(worker_rms) {
+                    Ok(recorder) => recorder,
+                    Err(error) => {
+                        let _ = ready_tx.send(Err(error));
+                        return;
+                    }
+                };
+                if ready_tx.send(Ok(())).is_err() {
+                    return;
+                }
+
+                while let Ok(command) = command_rx.recv() {
+                    match command {
+                        AudioCommand::Start(reply) => {
+                            let _ = reply.send(recorder.start());
+                        }
+                        AudioCommand::Stop(reply) => {
+                            let _ = reply.send(recorder.stop());
+                        }
+                        AudioCommand::Shutdown => break,
+                    }
+                }
+                // The device and stream are also destroyed on this thread.
+            })
+            .map_err(|error| AudioError::StreamError(error.to_string()))?;
+
+        match ready_rx.recv() {
+            Ok(Ok(())) => Ok(Self {
+                command_tx,
+                worker: Some(worker),
+                is_recording: false,
+                current_rms,
+            }),
+            result => {
+                let _ = worker.join();
+                Err(match result {
+                    Ok(Err(error)) => error,
+                    _ => {
+                        AudioError::StreamError("Audio worker stopped during initialization".into())
+                    }
+                })
+            }
+        }
+    }
+
+    pub fn start(&mut self) -> Result<(), AudioError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.command_tx
+            .send(AudioCommand::Start(reply_tx))
+            .map_err(|_| AudioError::StreamError("Audio worker is unavailable".into()))?;
+        reply_rx
+            .recv()
+            .map_err(|_| AudioError::StreamError("Audio worker stopped while starting".into()))??;
+        self.is_recording = true;
+        Ok(())
+    }
+
+    pub fn stop(&mut self) -> Result<Vec<f32>, AudioError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.command_tx
+            .send(AudioCommand::Stop(reply_tx))
+            .map_err(|_| AudioError::StreamError("Audio worker is unavailable".into()))?;
+        let result = reply_rx
+            .recv()
+            .map_err(|_| AudioError::StreamError("Audio worker stopped while stopping".into()));
+        self.is_recording = false;
+        result?
+    }
+
+    pub fn is_recording(&self) -> bool {
+        self.is_recording
+    }
+
+    /// Get current audio volume level (0.0 to 1.0).
+    pub fn get_rms(&self) -> f32 {
+        self.current_rms.load(Ordering::Relaxed) as f32 / 1000.0
+    }
+}
+
+impl Drop for AudioRecorder {
+    fn drop(&mut self) {
+        let _ = self.command_tx.send(AudioCommand::Shutdown);
+        if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
+        }
+    }
+}
+
+/// Created, used, and destroyed only inside the audio worker thread.
+struct AudioWorker {
+    device: Device,
     config: StreamConfig,
     sample_format: SampleFormat,
     stream: Option<Stream>,
@@ -18,9 +133,9 @@ pub struct AudioRecorder {
     current_rms: Arc<AtomicU32>, // Store RMS level as u32 (multiplied by 1000) for atomic access
 }
 
-impl AudioRecorder {
+impl AudioWorker {
     /// Create a new AudioRecorder using the default input device
-    pub fn new() -> Result<Self, AudioError> {
+    fn new(current_rms: Arc<AtomicU32>) -> Result<Self, AudioError> {
         let host = cpal::default_host();
         let device = host
             .default_input_device()
@@ -53,7 +168,7 @@ impl AudioRecorder {
             stream: None,
             buffer: Arc::new(Mutex::new(Vec::new())),
             is_recording: false,
-            current_rms: Arc::new(AtomicU32::new(0)),
+            current_rms,
         })
     }
 
@@ -89,10 +204,8 @@ impl AudioRecorder {
             SampleFormat::I16 => self.device.build_input_stream(
                 &self.config,
                 move |data: &[i16], _: &cpal::InputCallbackInfo| {
-                    let f32_data: Vec<f32> = data
-                        .iter()
-                        .map(|&s| s as f32 / i16::MAX as f32)
-                        .collect();
+                    let f32_data: Vec<f32> =
+                        data.iter().map(|&s| s as f32 / i16::MAX as f32).collect();
                     let rms = calculate_rms(&f32_data);
                     rms_clone.store((rms * 1000.0) as u32, Ordering::Relaxed);
                     write_to_buffer(&f32_data, channels, &buffer_clone);
@@ -169,15 +282,6 @@ impl AudioRecorder {
         );
 
         Ok(resampled)
-    }
-
-    pub fn is_recording(&self) -> bool {
-        self.is_recording
-    }
-
-    /// Get current audio volume level (0.0 to 1.0)
-    pub fn get_rms(&self) -> f32 {
-        self.current_rms.load(Ordering::Relaxed) as f32 / 1000.0
     }
 }
 

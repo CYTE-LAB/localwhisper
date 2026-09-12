@@ -19,7 +19,7 @@ impl Default for AppSettings {
     fn default() -> Self {
         Self {
             shortcut: "CmdOrCtrl+Shift+Space".to_string(),
-            enable_polish: true,
+            enable_polish: false,
             language: "auto".to_string(),
             onboarding_complete: false,
         }

@@ -1,4 +1,4 @@
-use llama_cpp_4::{
+use llama_cpp_2::{
     llama_backend::LlamaBackend,
     llama_batch::LlamaBatch,
     model::{params::LlamaModelParams, AddBos, LlamaModel, Special},
@@ -92,7 +92,7 @@ impl LlmEngine {
         let max_tokens = 256;
         let mut n_cur = tokens.len() as i32;
 
-        let sampler = LlamaSampler::chain_simple([
+        let mut sampler = LlamaSampler::chain_simple([
             LlamaSampler::temp(0.1),
             LlamaSampler::greedy(),
         ]);
@@ -118,10 +118,13 @@ impl LlmEngine {
         }
 
         // Detokenize
-        let result: String = output_tokens
-            .iter()
-            .map(|&tok| self.model.token_to_str(tok, Special::Tokenize).unwrap_or_default())
-            .collect();
+        let mut output_bytes = Vec::new();
+        for token in output_tokens {
+            output_bytes.extend(self.model.token_to_bytes(token, Special::Plaintext)
+                .map_err(|e| LlmError::InferenceError(e.to_string()))?);
+        }
+        let result = String::from_utf8(output_bytes)
+            .map_err(|e| LlmError::InferenceError(e.to_string()))?;
 
         let polished = result.trim().to_string();
         log::info!("Polished result: \"{}\"", polished);

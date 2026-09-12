@@ -26,10 +26,6 @@
     ],
     "security": {
       "csp": null
-    },
-    "trayIcon": {
-      "iconPath": "icons/icon.png",
-      "iconAsTemplate": true
     }
   },
   "bundle": {
@@ -44,21 +40,5 @@
       "minimumSystemVersion": "10.15"
     }
   },
-  "plugins": {
-    "global-shortcut": {
-      "all": true
-    },
-    "shell": {
-      "all": true
-    },
-    "fs": {
-      "all": true
-    },
-    "dialog": {
-      "all": true
-    },
-    "notification": {
-      "all": true
-    }
-  }
+  "plugins": {}
 }
